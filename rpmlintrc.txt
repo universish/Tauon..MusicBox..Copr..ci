@@ -1,0 +1,37 @@
+# GUI application; upstream ships no man page, and the doc-free payload is
+# intentional for this COPR portable rewrap.
+addFilter("no-manual-page-for-binary")
+addFilter("no-documentation")
+
+# The prebuilt upstream binaries carry .symtab (unstripped) by design; see
+# the rationale next to %global debug_package %{nil} in specs/Tauon.spec.
+addFilter("unstripped-binary-or-object")
+
+# "rewraps", "prebuilt", and "tarball" appear in %description; rpmlint's
+# dictionary has no entry for them.
+addFilter("spelling-error .*rewraps")
+addFilter("spelling-error .*prebuilt")
+addFilter("spelling-error .*tarball")
+
+# /usr/bin/tauon is a symlink to the true executable in /opt/tauon (declared in
+# %install instead of postinst scriptlets); rpmlint only matches regular files
+# against Exec=, so the desktop-file/binary pairing needs this carve-out.
+addFilter("desktopfile-without-binary")
+
+# /opt/tauon is the upstream portable layout; the blob must ship with its paths
+# intact (COPR-only rewrap, never eligible for official Fedora).
+addFilter("dir-or-file-in-opt")
+
+# Upstream's bundled shared libraries under /opt/tauon are private (loaded via
+# $ORIGIN RUNPATHs, not the system loader path): exec-bit-less libs with bare
+# SONAMEs and $ORIGIN RUNPATHs are all by design and required for the app to
+# find its bundled dependencies.
+addFilter("shared-library-not-executable")
+addFilter("no-soname")
+addFilter("invalid-soname")
+addFilter("missing-gnu-hash-section")
+addFilter("binary-or-shlib-defines-rpath")
+
+# Precompiled Python / C runtime OpenSSL calls may bypass Fedora system crypto
+# policies; inherent to the upstream prebuilt blob.
+addFilter("crypto-policy-non-compliance-openssl")

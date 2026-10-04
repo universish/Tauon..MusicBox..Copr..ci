@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.Taiko2k.Tauon</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Tauon Music Box</name>
+  <summary>A powerful and streamlined music player for the desktop</summary>
+  <description>
+    <p>
+      Tauon Music Box is a modern, streamlined music player designed for the desktop with a fast, comfortable and responsive UI.
+    </p>
+    <ul>
+      <li>Fast, comfortable and responsive UI with beautiful automatic theming.</li>
+      <li>Support Milkdrop visualisations.</li>
+      <li>Support for gapless playback.</li>
+      <li>Simple drag and drop functionality.</li>
+      <li>Supports common codecs such as .FLAC and tracker file types such as .MOD.</li>
+      <li>Seamless support for CUE sheets.</li>
+      <li>Stream music from your PLEX, Jellyfin or Airsonic server.</li>
+      <li>Customisable UI with multiple widgets to choose from.</li>
+      <li>Shortcuts for searching artists on Rate Your Music and tracks on Genius.</li>
+      <li>Extract archives and import your music downloads in one click!</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">tauon.desktop</launchable>
+  <url type="homepage">https://github.com/Taiko2k/Tauon</url>
+  <url type="bugtracker">https://github.com/universish/Tauon..MusicBox..Copr..ci/issues</url>
+  <provides>
+    <binary>tauon</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+</component>

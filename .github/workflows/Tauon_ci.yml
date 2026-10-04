@@ -1,0 +1,114 @@
+name: Tauon Copr CI
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Her gün 03:00 UTC'de yeni sürüm kontrolü
+  workflow_dispatch:
+  push:
+    paths:
+      - 'specs/Tauon.spec'
+      - 'sources/**'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu Klonla
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Upstream Sürümünü Denetle
+        id: check_release
+        run: |
+          LATEST_TAG=$(curl -sL "https://api.github.com/repos/Taiko2k/Tauon/releases/latest" | jq -r '.tag_name')
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            echo "Upstream sürüm etiketi alınamadı."
+            exit 1
+          fi
+
+          VERSION="${LATEST_TAG#v}"
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Depoda bu sürüm etiketi daha önce işlenmiş mi kontrol et (workflow_dispatch hariç)
+          if git rev-parse "v$VERSION" >/dev/null 2>&1 && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "build_needed=false" >> $GITHUB_OUTPUT
+            echo "Sürüm v$VERSION zaten paketlenmiş."
+          else
+            echo "build_needed=true" >> $GITHUB_OUTPUT
+            echo "Yeni sürüm bulundu: $VERSION"
+          fi
+
+      - name: Kaynakları İndir ve Hazırla
+        if: steps.check_release.outputs.build_needed == 'true'
+        run: |
+          TAG="${{ steps.check_release.outputs.latest_tag }}"
+          VERSION="${{ steps.check_release.outputs.version }}"
+
+          mkdir -p rpmbuild/SOURCES
+          mkdir -p rpmbuild/SRPMS
+
+          echo "x86_64 arşivi indiriliyor..."
+          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux.7z" \
+            -o rpmbuild/SOURCES/TauonMusicBox-linux.7z
+
+          echo "arm64 arşivi indiriliyor..."
+          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux-arm64.7z" \
+            -o rpmbuild/SOURCES/TauonMusicBox-linux-arm64.7z
+
+          # Ek kaynakları (desktop ve metainfo) kopyala
+          cp sources/* rpmbuild/SOURCES/
+
+          # Spec dosyasındaki sürüm bilgisini güncelle
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" specs/Tauon.spec
+
+      - name: Fedora Docker ile SRPM Üret
+        if: steps.check_release.outputs.build_needed == 'true'
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            fedora:latest bash -c "
+              dnf install -y rpmdevtools rpm-build
+              rpmbuild -bs \
+                --define '_topdir /workspace/rpmbuild' \
+                --define '_sourcedir /workspace/rpmbuild/SOURCES' \
+                specs/Tauon.spec
+            "
+
+      - name: Copr CLI Kurulumu ve SRPM Gönderimi
+        if: steps.check_release.outputs.build_needed == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-pip
+          pip install --break-system-packages copr-cli 2>/dev/null || pip install copr-cli
+
+          mkdir -p ~/.config
+          cat <<EOF > ~/.config/copr
+          [copr-cli]
+          copr_url = https://copr.fedorainfracloud.org
+          login = ${{ secrets.COPR_LOGIN }}
+          token = ${{ secrets.COPR_TOKEN }}
+          username = ${{ secrets.COPR_USERNAME }}
+          EOF
+
+          SRPM_PATH=$(ls rpmbuild/SRPMS/*.src.rpm)
+          echo "Yüklenen SRPM: $SRPM_PATH"
+          copr-cli build --nowait "universish/Tauon..MusicBox" "$SRPM_PATH"
+
+      - name: Spec Değişikliğini ve Git Etiketini Kaydet
+        if: steps.check_release.outputs.build_needed == 'true'
+        run: |
+          VERSION="${{ steps.check_release.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add specs/Tauon.spec
+          git commit -m "chore(release): update Tauon to v${VERSION}" || true
+          git tag -f "v${VERSION}"
+          git push origin main --tags

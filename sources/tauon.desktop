@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Tauon Music Box
+GenericName=Music Player
+Comment=A powerful and streamlined music player for the desktop
+Exec=tauon %U
+Icon=tauon
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;
+StartupWMClass=tauon
