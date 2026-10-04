@@ -8,3 +8,31 @@ target/
 *~
 .vscode/
 .idea/
+.git/
+# Paketleme ve arşiv çıktıları
+*.rpm
+*.src.rpm
+*.tar.gz
+*.tar.xz
+*.deb
+*.AppImage
+
+# CI ve rpmbuild geçici çalışma dizinleri
+rpmbuild/
+workdir/
+app_extracted/
+bundle/
+dist/
+target/
+node_modules/
+
+# İşletim sistemi ve editör dosyaları
+.DS_Store
+*~
+*.swp
+.vscode/
+.idea/
+
+# Yerel Copr kimlik dosyaları
+.copr
+copr_config
