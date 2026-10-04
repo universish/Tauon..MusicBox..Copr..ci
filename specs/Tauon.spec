@@ -1,7 +1,14 @@
 %global debug_package %{nil}
 %global __strip /bin/true
+%global __brp_strip %{nil}
+%global __brp_strip_comment_note %{nil}
+%global __brp_strip_lto %{nil}
+%global __brp_strip_static_archive %{nil}
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
+
+# Dahili özel kütüphanelerin sistem RPM bağımlılıklarına sızmasını engeller
+%global __provides_exclude_from ^/opt/tauon/.*$
 
 Name:           tauon
 Version:        12.1.0
@@ -36,24 +43,25 @@ tracker audio support, Jellyfin/Plex streaming, and inline visualization tools.
 
 %prep
 %setup -q -c -T
+# -snld: Dizin dışına çıkan güvenli sembolik bağlara izin verir
+# || : 7-zip'in Humanity simgelerindeki zincirleme bağları atlaması nedeniyle exit code 2 vermesini tolere eder
 %ifarch x86_64
-7z x %{SOURCE0} -oextracted_archive
+7z x -snld %{SOURCE0} || :
 %endif
 %ifarch aarch64
-7z x %{SOURCE1} -oextracted_archive
+7z x -snld %{SOURCE1} || :
 %endif
 
-# Arşiv içi tek bir klasöre açıldıysa kök dizine taşı
-if [ $(ls -1 extracted_archive | wc -l) -eq 1 ] && [ -d extracted_archive/* ]; then
-    mv extracted_archive/*/* .
-    rm -rf extracted_archive
-else
-    mv extracted_archive/* .
-    rm -rf extracted_archive
+# Arşiv içeriği tek bir alt klasör içine açıldıysa kök dizine taşı
+if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
+    SUBDIR=$(ls -1A)
+    mv "$SUBDIR"/* . 2>/dev/null || true
+    mv "$SUBDIR"/.* . 2>/dev/null || true
+    rmdir "$SUBDIR" 2>/dev/null || true
 fi
 
 %build
-# Önceden derlenmiş portable binary dosyasıdır; build adımı gerekmez.
+# Önceden derlenmiş binary paketidir; derleme adımı gerekmez.
 
 %install
 rm -rf %{buildroot}
@@ -67,19 +75,28 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 # Dosyaları /opt/tauon altına yerleştir
 cp -a ./* %{buildroot}/opt/tauon/
 
-# Çalıştırılabilir iznini garantile
-chmod +x %{buildroot}/opt/tauon/tauon || true
-
-# /usr/bin/tauon linki oluştur
-ln -sf /opt/tauon/tauon %{buildroot}%{_bindir}/tauon
+# Ana çalıştırılabilir dosyayı belirle ve /usr/bin/tauon bağlantısını kur
+if [ -f %{buildroot}/opt/tauon/tauon ]; then
+    chmod +x %{buildroot}/opt/tauon/tauon
+    ln -sf /opt/tauon/tauon %{buildroot}%{_bindir}/tauon
+elif [ -f %{buildroot}/opt/tauon/tauon.sh ]; then
+    chmod +x %{buildroot}/opt/tauon/tauon.sh
+    ln -sf /opt/tauon/tauon.sh %{buildroot}%{_bindir}/tauon
+elif [ -f %{buildroot}/opt/tauon/TauonMusicBox ]; then
+    chmod +x %{buildroot}/opt/tauon/TauonMusicBox
+    ln -sf /opt/tauon/TauonMusicBox %{buildroot}%{_bindir}/tauon
+fi
 
 # Desktop ve AppStream dosyalarını kur
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE3}
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri hicolor dizinine taşı
-find %{buildroot}/opt/tauon -name "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
-find %{buildroot}/opt/tauon -name "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
+# Simgeleri hicolor dizinine kopyala
+find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
+find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
+
+# Boş kalan simge dizinlerini temizle
+find %{buildroot}%{_datadir}/icons/hicolor -type d -empty -delete
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/tauon.desktop
@@ -90,8 +107,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_bindir}/tauon
 %{_datadir}/applications/tauon.desktop
 %{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
-%{_datadir}/icons/hicolor/*/apps/*
+%{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Sun Oct 04 2026 universish <universish@users.noreply.github.com> - %{version}-1
+* Mon Oct 05 2026 universish <universish@users.noreply.github.com> - %{version}-1
 - Automatic build from upstream portable release.
