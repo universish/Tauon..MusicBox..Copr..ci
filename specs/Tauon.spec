@@ -4,7 +4,7 @@
 %define _build_id_links none
 
 Name:           tauon
-Version:        7.8.0
+Version:        12.1.0
 Release:        1%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
