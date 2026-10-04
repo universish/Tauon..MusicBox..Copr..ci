@@ -109,6 +109,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add specs/Tauon.spec
-          git commit -m "chore(release): update Tauon to v${VERSION}" || true
+          # Eğer değişiklik varsa commit oluştur
+          git diff --staged --quiet || git commit -m "chore(release): update Tauon to v${VERSION}"
+          git push origin main
+
+          # Etiketi remote üzerinde zorlayarak (--force) güncelle
           git tag -f "v${VERSION}"
-          git push origin main --tags
+          git push origin "refs/tags/v${VERSION}" --force
