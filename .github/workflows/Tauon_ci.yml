@@ -65,9 +65,10 @@ jobs:
           # Ek kaynakları (desktop ve metainfo) kopyala
           cp sources/* rpmbuild/SOURCES/
 
-          # Spec dosyasındaki sürüm bilgisini güncelle
+          # Spec dosyasındaki sürümü upstream tag ile, release'i ise GitHub build numarasıyla güncelle
           sed -i "s/^Version:.*/Version:        ${VERSION}/" specs/Tauon.spec
-
+          sed -i "s/^Release:.*/Release:        ${{ github.run_number }}%{?dist}/" specs/Tauon.spec
+          
       - name: Fedora Docker ile SRPM Üret
         if: steps.check_release.outputs.build_needed == 'true'
         run: |
