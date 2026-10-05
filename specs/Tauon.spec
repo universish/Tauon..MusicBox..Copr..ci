@@ -7,11 +7,11 @@
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
 
-# check-rpaths ve brp kontrollerini atla
+# check-rpaths ve brp denetimlerini atla
 %global __os_install_post %{nil}
 %global __spec_install_post /usr/lib/rpm/check-buildroot
 
-# Dahili kütüphanelerin sistem bağımlılıklarına sızmasını engelle
+# Dahili kütüphanelerin sistem RPM bağımlılıklarına sızmasını engelle
 %global __provides_exclude_from ^/opt/tauon/.*$
 %global __requires_exclude_from ^/opt/tauon/.*$
 
@@ -33,20 +33,14 @@ BuildRequires:  7zip
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 
-# İzolasyon ve taşınabilir veri dizini yönlendirmesi için gerekli sistem paketleri
+# Görsel motoru, sanal izolasyon ve masaüstü bağımlılıkları
+Requires:       SDL3_image
 Requires:       bubblewrap
-Requires:       hicolor-icon-theme
-Requires:       xdg-utils
-Requires:       xdg-user-dirs
-Requires:       bubblewrap
-Requires:       libdecor
-Requires:       libwayland-cursor
-Requires:       libwayland-egl
-Requires:       libxkbcommon
 Requires:       hicolor-icon-theme
 Requires:       xdg-utils
 Requires:       xdg-user-dirs
 
+Provides:       tauonmb = %{version}-%{release}
 Provides:       Tauon = %{version}-%{release}
 Provides:       TauonMusicBox = %{version}-%{release}
 
@@ -73,7 +67,7 @@ if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
 fi
 
 %build
-# Portable binary; derleme gerekmez.
+# Portable binary; derleme adımı gerekmez.
 
 %install
 rm -rf %{buildroot}
@@ -90,16 +84,19 @@ cp -a ./* %{buildroot}/opt/tauon/
 # Portable user-data mount noktasını oluştur
 mkdir -p %{buildroot}/opt/tauon/_internal/user-data
 
-# Ana ikili dosyaya izin ver
+# Ana ikili dosyaya çalıştırma yetkisi ver
 if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
     chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
 fi
 
-# /usr/bin/tauon wrapper: bubblewrap ile kullanıcı verisini ~/.local/share/ altına yönlendirir
+# /usr/bin/tauon başlatıcı wrapper betiği
 cat << 'EOF' > %{buildroot}%{_bindir}/tauon
 #!/bin/sh
 USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/TauonMusicBox/user-data"
 mkdir -p "$USER_DATA_DIR"
+
+export SDL_VIDEO_DRIVER="wayland,x11"
+export SDL_VIDEODRIVER="wayland,x11"
 
 if command -v bwrap >/dev/null 2>&1 && [ -d "/opt/tauon/_internal/user-data" ]; then
     exec bwrap \
@@ -112,22 +109,11 @@ fi
 EOF
 chmod 755 %{buildroot}%{_bindir}/tauon
 
-# Desktop dosyası kurulumu (Dinamik Arama veya Sıfırdan Oluşturma)
-DESKTOP_SRC=""
-if [ -f "extra/tauon.desktop" ]; then
-    DESKTOP_SRC="extra/tauon.desktop"
-elif [ -f "%{name}.desktop" ]; then
-    DESKTOP_SRC="%{name}.desktop"
-elif [ -f "_internal/share/applications/tauon.desktop" ]; then
-    DESKTOP_SRC="_internal/share/applications/tauon.desktop"
-fi
+# Geriye dönük uyumluluk için tauonmb sembolik bağı oluştur
+ln -sf tauon %{buildroot}%{_bindir}/tauonmb
 
-if [ -n "$DESKTOP_SRC" ]; then
-    install -m 0644 "$DESKTOP_SRC" %{buildroot}%{_datadir}/applications/%{name}.desktop
-    sed -i 's|^Exec=.*|Exec=/usr/bin/tauon %U|' %{buildroot}%{_datadir}/applications/%{name}.desktop
-    sed -i 's|^Icon=.*|Icon=tauon|' %{buildroot}%{_datadir}/applications/%{name}.desktop
-else
-    cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
+# Desktop dosyası kurulumu
+cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
 [Desktop Entry]
 Name=Tauon Music Box
 GenericName=Music Player
@@ -136,12 +122,11 @@ Exec=/usr/bin/tauon %U
 Icon=tauon
 Type=Application
 StartupNotify=true
-StartupWMClass=tauon
+StartupWMClass=tauonmb
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;
 EOF
-fi
 
 # Metainfo kurulumu
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
@@ -175,10 +160,11 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %files
 /opt/tauon
 %{_bindir}/tauon
+%{_bindir}/tauonmb
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
 * Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-1
-- Fully self-contained build: isolate internal libs, bypass check-rpaths, and wrap portable user-data with bubblewrap.
+- Add SDL3_image dep, map StartupWMClass to tauonmb, provide tauonmb symlink, and bubblewrap user-data.
