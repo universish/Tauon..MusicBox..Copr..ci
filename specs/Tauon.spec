@@ -20,8 +20,8 @@
 %{!?pkg_release: %global pkg_release 1}
 
 Name:           tauon
-Version:        %{pkg_version}
-Release:        %{pkg_release}%{?dist}
+Version:        12.1.0
+Release:        1%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
