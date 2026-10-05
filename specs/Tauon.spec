@@ -93,6 +93,44 @@ fi
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE3}
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
+# Desktop dosyası kurulumu (Dinamik Arama veya Sıfırdan Oluşturma)
+mkdir -p %{buildroot}%{_datadir}/applications
+
+DESKTOP_SRC=""
+# Arşiv içindeki olası konumlarda desktop dosyasını ara
+if [ -f "%{name}.desktop" ]; then
+    DESKTOP_SRC="%{name}.desktop"
+elif [ -f "extra/tauon.desktop" ]; then
+    DESKTOP_SRC="extra/tauon.desktop"
+elif [ -f "_internal/share/applications/tauon.desktop" ]; then
+    DESKTOP_SRC="_internal/share/applications/tauon.desktop"
+else
+    DESKTOP_SRC=$(find . -maxdepth 3 -iname "*tauon*.desktop" 2>/dev/null | head -n 1)
+fi
+
+if [ -n "$DESKTOP_SRC" ] && [ -f "$DESKTOP_SRC" ]; then
+    # Upstream dosyasını kur, Exec ve Icon satırlarını sistem yollarına göre düzenle
+    install -m 0644 "$DESKTOP_SRC" %{buildroot}%{_datadir}/applications/%{name}.desktop
+    sed -i 's|^Exec=.*|Exec=/usr/bin/tauon %U|' %{buildroot}%{_datadir}/applications/%{name}.desktop
+    sed -i 's|^Icon=.*|Icon=tauon|' %{buildroot}%{_datadir}/applications/%{name}.desktop
+else
+    # Dosya yoksa veya taşınmadıysa sıfırdan oluştur
+    cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
+[Desktop Entry]
+Name=Tauon Music Box
+GenericName=Music Player
+Comment=A powerful and streamlined music player for the desktop
+Exec=/usr/bin/tauon %U
+Icon=tauon
+Type=Application
+StartupNotify=true
+StartupWMClass=tauon
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;
+EOF
+fi
+
 # Simgeleri hicolor dizinlerine taşı
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
