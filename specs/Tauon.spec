@@ -7,8 +7,9 @@
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
 
-# Upstream runner'ından kalan geçersiz RPATH/RUNPATH denetimini tamamen devre dışı bırakır
-%global __arch_install_post /usr/lib/rpm/check-buildroot
+# check-rpaths ve tüm brp betiklerini tamamen devre dışı bırakır
+%global __os_install_post %{nil}
+%global __spec_install_post /usr/lib/rpm/check-buildroot
 
 # Dahili Python 3.14 ve SDL3 kütüphanelerinin sistem RPM bağımlılıklarına sızmasını engeller
 %global __provides_exclude_from ^/opt/tauon/.*$
@@ -161,4 +162,4 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 
 %changelog
 * Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-1
-- Fully self-contained build: dynamic desktop generation, fallback SVG icon, and bypass check-rpaths.
+- Fully self-contained build: bypass check-rpaths, isolate internal libs, and dynamic desktop generation.
