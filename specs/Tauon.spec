@@ -7,7 +7,7 @@
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
 
-# Dahili özel kütüphanelerin sistem RPM bağımlılıklarına sızmasını engeller
+# Dahili kütüphanelerin sistem bağımlılıklarına sızmasını engeller
 %global __provides_exclude_from ^/opt/tauon/.*$
 
 Name:           tauon
@@ -43,8 +43,6 @@ tracker audio support, Jellyfin/Plex streaming, and inline visualization tools.
 
 %prep
 %setup -q -c -T
-# -snld: Dizin dışına çıkan güvenli sembolik bağlara izin verir
-# || : 7-zip'in Humanity simgelerindeki zincirleme bağları atlaması nedeniyle exit code 2 vermesini tolere eder
 %ifarch x86_64
 7z x -snld %{SOURCE0} || :
 %endif
@@ -52,7 +50,7 @@ tracker audio support, Jellyfin/Plex streaming, and inline visualization tools.
 7z x -snld %{SOURCE1} || :
 %endif
 
-# Arşiv içeriği tek bir alt klasör içine açıldıysa kök dizine taşı
+# Arşiv tek bir alt klasöre açıldıysa kök dizine taşı
 if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
     SUBDIR=$(ls -1A)
     mv "$SUBDIR"/* . 2>/dev/null || true
@@ -61,7 +59,7 @@ if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
 fi
 
 %build
-# Önceden derlenmiş binary paketidir; derleme adımı gerekmez.
+# Portable binary; derleme adımı gerekmez.
 
 %install
 rm -rf %{buildroot}
@@ -72,30 +70,34 @@ mkdir -p %{buildroot}%{_datadir}/metainfo
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 
-# Dosyaları /opt/tauon altına yerleştir
+# Dosyaları /opt/tauon altına taşı
 cp -a ./* %{buildroot}/opt/tauon/
 
-# Ana çalıştırılabilir dosyayı belirle ve /usr/bin/tauon bağlantısını kur
-if [ -f %{buildroot}/opt/tauon/tauon ]; then
-    chmod +x %{buildroot}/opt/tauon/tauon
+# Ana çalıştırıcıyı bul ve /usr/bin/tauon başlatıcı scriptini oluştur
+if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
+    chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
+    cat << 'EOF' > %{buildroot}%{_bindir}/tauon
+#!/bin/sh
+exec "/opt/tauon/Tauon Music Box" "$@"
+EOF
+    chmod 755 %{buildroot}%{_bindir}/tauon
+elif [ -f "%{buildroot}/opt/tauon/tauon" ]; then
+    chmod +x "%{buildroot}/opt/tauon/tauon"
     ln -sf /opt/tauon/tauon %{buildroot}%{_bindir}/tauon
-elif [ -f %{buildroot}/opt/tauon/tauon.sh ]; then
-    chmod +x %{buildroot}/opt/tauon/tauon.sh
-    ln -sf /opt/tauon/tauon.sh %{buildroot}%{_bindir}/tauon
-elif [ -f %{buildroot}/opt/tauon/TauonMusicBox ]; then
-    chmod +x %{buildroot}/opt/tauon/TauonMusicBox
+elif [ -f "%{buildroot}/opt/tauon/TauonMusicBox" ]; then
+    chmod +x "%{buildroot}/opt/tauon/TauonMusicBox"
     ln -sf /opt/tauon/TauonMusicBox %{buildroot}%{_bindir}/tauon
 fi
 
-# Desktop ve AppStream dosyalarını kur
+# Desktop ve Metainfo kurulumu
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE3}
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri hicolor dizinine kopyala
+# Simgeleri hicolor dizinlerine taşı
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
 
-# Boş kalan simge dizinlerini temizle
+# Eğer simge bulunamadıysa dizinlerin boş kalıp build'i kırmaması için temizle
 find %{buildroot}%{_datadir}/icons/hicolor -type d -empty -delete
 
 %check
@@ -110,5 +112,5 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Mon Oct 05 2026 universish <universish@users.noreply.github.com> - %{version}-1
-- Automatic build from upstream portable release.
+* Mon Oct 05 2026 Saffet Yavuz : universish <universish@users.noreply.github.com> - %{version}-1
+- Fix desktop file duplicate keys and handle spaced executable binary name.
