@@ -17,7 +17,7 @@
 
 Name:           tauon
 Version:        12.1.0
-Release:        2%{?dist}
+Release:        5%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
@@ -33,9 +33,14 @@ BuildRequires:  7zip
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 
-# DNF ile otomatik kurulacak sistem bağımlılıkları
+# Grafik, akış kod çözücü ve ses bağımlılıkları
+Requires:       SDL3
 Requires:       SDL3_image
-Requires:       bubblewrap
+Requires:       (ffmpeg or ffmpeg-free)
+Requires:       libwayland-client
+Requires:       libwayland-egl
+Requires:       libwayland-cursor
+Requires:       pipewire-libs
 Requires:       hicolor-icon-theme
 Requires:       xdg-utils
 Requires:       xdg-user-dirs
@@ -81,40 +86,50 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 # Dosyaları /opt/tauon altına yerleştir
 cp -a ./* %{buildroot}/opt/tauon/
 
-# Portable user-data mount noktasını oluştur
-mkdir -p %{buildroot}/opt/tauon/_internal/user-data
+# 1. Taşınabilir mod dosyasını sil (Veriler ~/.local/share/TauonMusicBox altına yazılsın)
+rm -f %{buildroot}/opt/tauon/portable %{buildroot}/opt/tauon/_internal/portable
+
+# 2. Uyumsuz gömülü PipeWire kütüphanesini sil (Fedora'nın yerelini kullansın)
+rm -f %{buildroot}/opt/tauon/_internal/libpipewire*
+
+# 3. Gömülü SDL3 ikilisini silip sisteminkine bağla
+rm -f %{buildroot}/opt/tauon/libSDL3.so.0
+ln -sf %{_libdir}/libSDL3.so.0 %{buildroot}/opt/tauon/libSDL3.so.0
 
 # Ana ikili dosyaya çalıştırma izni ver
 if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
     chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
 fi
 
-# /usr/bin/tauon wrapper betiği
+# /usr/bin/tauon başlatıcı betiği
 cat << 'EOF' > %{buildroot}%{_bindir}/tauon
 #!/bin/sh
-USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/TauonMusicBox/user-data"
-mkdir -p "$USER_DATA_DIR"
+PRELOAD_LIBS=""
+for lib in /usr/lib64/libwayland-egl.so.1 /usr/lib64/libSDL3.so.0; do
+    if [ -f "$lib" ]; then
+        if [ -z "$PRELOAD_LIBS" ]; then
+            PRELOAD_LIBS="$lib"
+        else
+            PRELOAD_LIBS="${PRELOAD_LIBS}:${lib}"
+        fi
+    fi
+done
 
-# Dahili ve sistem SDL3 kütüphanelerini birlikte görsün
-export LD_LIBRARY_PATH="/opt/tauon/_internal:/opt/tauon:${LD_LIBRARY_PATH}"
+if [ -n "$PRELOAD_LIBS" ]; then
+    export LD_PRELOAD="${PRELOAD_LIBS}${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 export SDL_VIDEO_DRIVER="wayland,x11"
 export SDL_VIDEODRIVER="wayland,x11"
 
-if command -v bwrap >/dev/null 2>&1 && [ -d "/opt/tauon/_internal/user-data" ]; then
-    exec bwrap \
-        --dev-bind / / \
-        --bind "$USER_DATA_DIR" "/opt/tauon/_internal/user-data" \
-        "/opt/tauon/Tauon Music Box" "$@"
-else
-    exec "/opt/tauon/Tauon Music Box" "$@"
-fi
+exec "/opt/tauon/Tauon Music Box" "$@"
 EOF
 chmod 755 %{buildroot}%{_bindir}/tauon
 
 # Geriye dönük uyumluluk için tauonmb sembolik bağı
 ln -sf tauon %{buildroot}%{_bindir}/tauonmb
 
-# Desktop kısayolu (StartupWMClass tauonmb olarak eşlendi)
+# Masaüstü kısayolu (StartupWMClass=tauonmb)
 cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
 [Desktop Entry]
 Name=Tauon Music Box
@@ -133,7 +148,7 @@ EOF
 # Metainfo kurulumu
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri hicolor dizinlerine taşı
+# Simgeleri hicolor dizinlerine yerleştir
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
 
@@ -168,5 +183,5 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-2
-- Add SDL3_image runtime requirement, export LD_LIBRARY_PATH, and provide tauonmb symlink.
+* Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-5
+- Fix LD_PRELOAD delimiter for Wayland EGL, add ffmpeg decoder requirement.
