@@ -23,9 +23,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Upstream Sürümünü Denetle
+      - name: Upstream Sürümünü ve Release Numarasını Hesapla
         id: check_release
         run: |
+          # 1. Upstream GitHub'dan en güncel sürüm etiketini al
           LATEST_TAG=$(curl -sL "https://api.github.com/repos/Taiko2k/Tauon/releases/latest" | jq -r '.tag_name')
           if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
             echo "Upstream sürüm etiketi alınamadı."
@@ -36,13 +37,25 @@ jobs:
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # Depoda bu sürüm etiketi daha önce işlenmiş mi kontrol et (workflow_dispatch hariç)
-          if git rev-parse "v$VERSION" >/dev/null 2>&1 && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          # 2. Copr API'den universish/Tauon..MusicBox deposundaki bu sürüm için en yüksek release'i bul
+          COPR_API="https://copr.fedorainfracloud.org/api_3/package?ownername=universish&projectname=Tauon..MusicBox&packagename=tauon&with_all_builds=true"
+          LATEST_REL=$(curl -sL "$COPR_API" | jq -r --arg ver "$VERSION" '
+            [.builds[]? | select(.version | startswith($ver)) | .version | split("-")[1] | split(".")[0] | tonumber] | max // 0
+          ' 2>/dev/null || echo "0")
+
+          # 3. Aynı sürümse bir artır (12.1.0-27 -> 28), yeni sürümse 1 yap (12.2.0 -> 1)
+          NEW_RELEASE=$((LATEST_REL + 1))
+          echo "release=$NEW_RELEASE" >> $GITHUB_OUTPUT
+
+          # 4. Derleme gerekli mi?
+          # Eğer push veya workflow_dispatch ile tetiklendiyse her zaman derle.
+          # Cron zamanlayıcıdaysa sadece yeni upstream sürüm geldiyse (LATEST_REL == 0 ise) derle.
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$LATEST_REL" -gt 0 ]; then
             echo "build_needed=false" >> $GITHUB_OUTPUT
-            echo "Sürüm v$VERSION zaten paketlenmiş."
+            echo "Upstream sürümünde değişiklik yok ($VERSION zaten Copr üzerinde mevcut)."
           else
             echo "build_needed=true" >> $GITHUB_OUTPUT
-            echo "Yeni sürüm bulundu: $VERSION"
+            echo "Derleme başlatılıyor: Sürüm $VERSION, Release $NEW_RELEASE"
           fi
 
       - name: Kaynakları İndir ve Hazırla
@@ -50,6 +63,7 @@ jobs:
         run: |
           TAG="${{ steps.check_release.outputs.latest_tag }}"
           VERSION="${{ steps.check_release.outputs.version }}"
+          RELEASE="${{ steps.check_release.outputs.release }}"
 
           mkdir -p rpmbuild/SOURCES
           mkdir -p rpmbuild/SRPMS
@@ -63,12 +77,14 @@ jobs:
             -o rpmbuild/SOURCES/TauonMusicBox-linux-arm64.7z
 
           # Ek kaynakları (desktop ve metainfo) kopyala
-          cp sources/* rpmbuild/SOURCES/
+          if [ -d sources ] && [ "$(ls -A sources)" ]; then
+            cp sources/* rpmbuild/SOURCES/
+          fi
 
-          # Spec dosyasındaki sürümü upstream tag ile, release'i ise GitHub build numarasıyla güncelle
-          sed -i "s/^Version:.*/Version:        ${VERSION}/" specs/Tauon.spec
-          sed -i "s/^Release:.*/Release:        ${{ github.run_number }}%{?dist}/" specs/Tauon.spec
-          
+          # Spec dosyasındaki Version ve Release alanlarını dinamik olarak güncelle
+          sed -i -E "s/^(Version:[[:space:]]*).*/\1${VERSION}/" specs/Tauon.spec
+          sed -i -E "s/^(Release:[[:space:]]*).*/\1${RELEASE}%{?dist}/" specs/Tauon.spec
+
       - name: Fedora Docker ile SRPM Üret
         if: steps.check_release.outputs.build_needed == 'true'
         run: |
@@ -106,14 +122,15 @@ jobs:
         if: steps.check_release.outputs.build_needed == 'true'
         run: |
           VERSION="${{ steps.check_release.outputs.version }}"
+          RELEASE="${{ steps.check_release.outputs.release }}"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           git add specs/Tauon.spec
-          # Eğer değişiklik varsa commit oluştur
-          git diff --staged --quiet || git commit -m "chore(release): update Tauon to v${VERSION}"
+          git diff --staged --quiet || git commit -m "chore(release): build v${VERSION}-${RELEASE}"
           git push origin main
 
-          # Etiketi remote üzerinde zorlayarak (--force) güncelle
+          # Sürüm etiketini güncelle
           git tag -f "v${VERSION}"
           git push origin "refs/tags/v${VERSION}" --force
