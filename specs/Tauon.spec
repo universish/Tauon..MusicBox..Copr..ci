@@ -17,7 +17,7 @@
 
 Name:           tauon
 Version:        12.1.0
-Release:        5%{?dist}
+Release:        27%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
