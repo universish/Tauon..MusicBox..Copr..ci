@@ -7,6 +7,5 @@ Icon=tauon
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Player;
-MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;
+MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;x-scheme-handler/tauon;x-scheme-handler/tauonmb;
 StartupWMClass=tauon
-MimeType=x-scheme-handler/tauon;
