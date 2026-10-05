@@ -7,11 +7,11 @@
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
 
-# check-rpaths ve tüm brp betiklerini tamamen devre dışı bırakır
+# check-rpaths ve brp kontrollerini atla
 %global __os_install_post %{nil}
 %global __spec_install_post /usr/lib/rpm/check-buildroot
 
-# Dahili Python 3.14 ve SDL3 kütüphanelerinin sistem RPM bağımlılıklarına sızmasını engeller
+# Dahili kütüphanelerin sistem bağımlılıklarına sızmasını engelle
 %global __provides_exclude_from ^/opt/tauon/.*$
 %global __requires_exclude_from ^/opt/tauon/.*$
 
@@ -33,6 +33,8 @@ BuildRequires:  7zip
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 
+# İzolasyon ve taşınabilir veri dizini yönlendirmesi için gerekli sistem paketleri
+Requires:       bubblewrap
 Requires:       hicolor-icon-theme
 Requires:       xdg-utils
 Requires:       xdg-user-dirs
@@ -63,7 +65,7 @@ if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
 fi
 
 %build
-# Portable binary; derleme adımı gerekmez.
+# Portable binary; derleme gerekmez.
 
 %install
 rm -rf %{buildroot}
@@ -77,21 +79,30 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 # Dosyaları /opt/tauon altına taşı
 cp -a ./* %{buildroot}/opt/tauon/
 
-# Ana çalıştırıcıyı bul ve /usr/bin/tauon başlatıcı betiğini oluştur
+# Portable user-data mount noktasını oluştur
+mkdir -p %{buildroot}/opt/tauon/_internal/user-data
+
+# Ana ikili dosyaya izin ver
 if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
     chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
-    cat << 'EOF' > %{buildroot}%{_bindir}/tauon
-#!/bin/sh
-exec "/opt/tauon/Tauon Music Box" "$@"
-EOF
-    chmod 755 %{buildroot}%{_bindir}/tauon
-elif [ -f "%{buildroot}/opt/tauon/tauon" ]; then
-    chmod +x "%{buildroot}/opt/tauon/tauon"
-    ln -sf /opt/tauon/tauon %{buildroot}%{_bindir}/tauon
-elif [ -f "%{buildroot}/opt/tauon/TauonMusicBox" ]; then
-    chmod +x "%{buildroot}/opt/tauon/TauonMusicBox"
-    ln -sf /opt/tauon/TauonMusicBox %{buildroot}%{_bindir}/tauon
 fi
+
+# /usr/bin/tauon wrapper: bubblewrap ile kullanıcı verisini ~/.local/share/ altına yönlendirir
+cat << 'EOF' > %{buildroot}%{_bindir}/tauon
+#!/bin/sh
+USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/TauonMusicBox/user-data"
+mkdir -p "$USER_DATA_DIR"
+
+if command -v bwrap >/dev/null 2>&1 && [ -d "/opt/tauon/_internal/user-data" ]; then
+    exec bwrap \
+        --dev-bind / / \
+        --bind "$USER_DATA_DIR" "/opt/tauon/_internal/user-data" \
+        "/opt/tauon/Tauon Music Box" "$@"
+else
+    exec "/opt/tauon/Tauon Music Box" "$@"
+fi
+EOF
+chmod 755 %{buildroot}%{_bindir}/tauon
 
 # Desktop dosyası kurulumu (Dinamik Arama veya Sıfırdan Oluşturma)
 DESKTOP_SRC=""
@@ -127,7 +138,7 @@ fi
 # Metainfo kurulumu
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri arşivden ara ve yerleştir; yoksa gömülü SVG oluştur
+# Simgeleri hicolor dizinlerine yerleştir
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
 
@@ -162,4 +173,4 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 
 %changelog
 * Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-1
-- Fully self-contained build: bypass check-rpaths, isolate internal libs, and dynamic desktop generation.
+- Fully self-contained build: isolate internal libs, bypass check-rpaths, and wrap portable user-data with bubblewrap.
