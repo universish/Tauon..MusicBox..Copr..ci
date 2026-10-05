@@ -7,17 +7,17 @@
 %global __brp_mangle_shebangs %{nil}
 %define _build_id_links none
 
-# check-rpaths ve brp denetimlerini atla
+# check-rpaths ve brp kontrollerini devre dışı bırakır
 %global __os_install_post %{nil}
 %global __spec_install_post /usr/lib/rpm/check-buildroot
 
-# Dahili kütüphanelerin sistem RPM bağımlılıklarına sızmasını engelle
+# Dahili kütüphanelerin sistem RPM bağımlılıklarına sızmasını engeller
 %global __provides_exclude_from ^/opt/tauon/.*$
 %global __requires_exclude_from ^/opt/tauon/.*$
 
 Name:           tauon
 Version:        12.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
@@ -33,7 +33,7 @@ BuildRequires:  7zip
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
 
-# Görsel motoru, sanal izolasyon ve masaüstü bağımlılıkları
+# DNF ile otomatik kurulacak sistem bağımlılıkları
 Requires:       SDL3_image
 Requires:       bubblewrap
 Requires:       hicolor-icon-theme
@@ -58,7 +58,7 @@ tracker audio support, Jellyfin/Plex streaming, and inline visualization tools.
 7z x -snld %{SOURCE1} || :
 %endif
 
-# Arşiv tek bir alt klasöre açıldıysa kök dizine taşı
+# Arşiv içeriği tek klasöre açıldıysa kök dizine taşı
 if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
     SUBDIR=$(ls -1A)
     mv "$SUBDIR"/* . 2>/dev/null || true
@@ -78,23 +78,25 @@ mkdir -p %{buildroot}%{_datadir}/metainfo
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 
-# Dosyaları /opt/tauon altına taşı
+# Dosyaları /opt/tauon altına yerleştir
 cp -a ./* %{buildroot}/opt/tauon/
 
 # Portable user-data mount noktasını oluştur
 mkdir -p %{buildroot}/opt/tauon/_internal/user-data
 
-# Ana ikili dosyaya çalıştırma yetkisi ver
+# Ana ikili dosyaya çalıştırma izni ver
 if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
     chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
 fi
 
-# /usr/bin/tauon başlatıcı wrapper betiği
+# /usr/bin/tauon wrapper betiği
 cat << 'EOF' > %{buildroot}%{_bindir}/tauon
 #!/bin/sh
 USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/TauonMusicBox/user-data"
 mkdir -p "$USER_DATA_DIR"
 
+# Dahili ve sistem SDL3 kütüphanelerini birlikte görsün
+export LD_LIBRARY_PATH="/opt/tauon/_internal:/opt/tauon:${LD_LIBRARY_PATH}"
 export SDL_VIDEO_DRIVER="wayland,x11"
 export SDL_VIDEODRIVER="wayland,x11"
 
@@ -109,10 +111,10 @@ fi
 EOF
 chmod 755 %{buildroot}%{_bindir}/tauon
 
-# Geriye dönük uyumluluk için tauonmb sembolik bağı oluştur
+# Geriye dönük uyumluluk için tauonmb sembolik bağı
 ln -sf tauon %{buildroot}%{_bindir}/tauonmb
 
-# Desktop dosyası kurulumu
+# Desktop kısayolu (StartupWMClass tauonmb olarak eşlendi)
 cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
 [Desktop Entry]
 Name=Tauon Music Box
@@ -131,7 +133,7 @@ EOF
 # Metainfo kurulumu
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri hicolor dizinlerine yerleştir
+# Simgeleri hicolor dizinlerine taşı
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
 
@@ -166,5 +168,5 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-1
-- Add SDL3_image dep, map StartupWMClass to tauonmb, provide tauonmb symlink, and bubblewrap user-data.
+* Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-2
+- Add SDL3_image runtime requirement, export LD_LIBRARY_PATH, and provide tauonmb symlink.
