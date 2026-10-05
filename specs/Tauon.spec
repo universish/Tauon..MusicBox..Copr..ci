@@ -15,9 +15,13 @@
 %global __provides_exclude_from ^/opt/tauon/.*$
 %global __requires_exclude_from ^/opt/tauon/.*$
 
+# Dışarıdan makro gelmezse kullanılacak yedek varsayılanlar
+%{!?pkg_version: %global pkg_version 12.1.0}
+%{!?pkg_release: %global pkg_release 1}
+
 Name:           tauon
-Version:        12.1.0
-Release:        30%{?dist}
+Version:        %{pkg_version}
+Release:        %{pkg_release}%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
@@ -196,6 +200,5 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Tue Oct 06 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-28
-- Fix OpenSSL library conflict preventing ffmpeg radio decoder subprocess from starting
-- Add missing runtime dependencies: mpg123, libsamplerate, libopenmpt, pipewire-pulseaudio, websocket
+* Tue Oct 06 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-%{release}
+- Automated dynamic release and OpenSSL symlink fixes
