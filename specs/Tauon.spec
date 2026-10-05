@@ -17,7 +17,7 @@
 
 Name:           tauon
 Version:        12.1.0
-Release:        27%{?dist}
+Release:        28%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
 License:        GPL-3.0-or-later
@@ -37,6 +37,13 @@ BuildRequires:  libappstream-glib
 Requires:       SDL3
 Requires:       SDL3_image
 Requires:       (ffmpeg or ffmpeg-free)
+Requires:       mpg123
+Requires:       libsamplerate
+Requires:       libopenmpt
+Requires:       pipewire-pulseaudio
+Requires:       pulseaudio-libs
+Requires:       python3-websocket-client
+Requires:       openssl-libs
 Requires:       libwayland-client
 Requires:       libwayland-egl
 Requires:       libwayland-cursor
@@ -92,7 +99,13 @@ rm -f %{buildroot}/opt/tauon/portable %{buildroot}/opt/tauon/_internal/portable
 # 2. Uyumsuz gömülü PipeWire kütüphanesini sil (Fedora'nın yerelini kullansın)
 rm -f %{buildroot}/opt/tauon/_internal/libpipewire*
 
-# 3. Gömülü SDL3 ikilisini silip sisteminkine bağla
+# 3. OpenSSL Sürüm Çakışması Düzeltmesi (ffmpeg subprocess çökmesini engeller)
+rm -f %{buildroot}/opt/tauon/_internal/libssl.so*
+rm -f %{buildroot}/opt/tauon/_internal/libcrypto.so*
+ln -sf %{_libdir}/libssl.so.3 %{buildroot}/opt/tauon/_internal/libssl.so.3
+ln -sf %{_libdir}/libcrypto.so.3 %{buildroot}/opt/tauon/_internal/libcrypto.so.3
+
+# 4. Gömülü SDL3 ikilisini silip sisteminkine bağla
 rm -f %{buildroot}/opt/tauon/libSDL3.so.0
 ln -sf %{_libdir}/libSDL3.so.0 %{buildroot}/opt/tauon/libSDL3.so.0
 
@@ -183,5 +196,6 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_datadir}/icons/hicolor/*/*/*
 
 %changelog
-* Mon Oct 05 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-5
-- Fix LD_PRELOAD delimiter for Wayland EGL, add ffmpeg decoder requirement.
+* Tue Oct 06 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-28
+- Fix OpenSSL library conflict preventing ffmpeg radio decoder subprocess from starting
+- Add missing runtime dependencies: mpg123, libsamplerate, libopenmpt, pipewire-pulseaudio, websocket
