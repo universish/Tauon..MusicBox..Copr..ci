@@ -38,6 +38,14 @@ Requires:       bubblewrap
 Requires:       hicolor-icon-theme
 Requires:       xdg-utils
 Requires:       xdg-user-dirs
+Requires:       bubblewrap
+Requires:       libdecor
+Requires:       libwayland-cursor
+Requires:       libwayland-egl
+Requires:       libxkbcommon
+Requires:       hicolor-icon-theme
+Requires:       xdg-utils
+Requires:       xdg-user-dirs
 
 Provides:       Tauon = %{version}-%{release}
 Provides:       TauonMusicBox = %{version}-%{release}
