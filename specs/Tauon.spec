@@ -20,7 +20,7 @@
 %{!?pkg_release: %global pkg_release 1}
 
 Name:           tauon
-Version:        12.1.0
+Version:        13.0.0
 Release:        1%{?dist}
 Summary:        A powerful and streamlined music player for the desktop
 
