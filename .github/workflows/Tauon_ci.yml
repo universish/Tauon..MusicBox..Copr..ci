@@ -107,26 +107,22 @@ jobs:
           path: srpms/
 
       - name: Copr CLI Kurulumu ve SRPM Gönderimi
-        uses: addnab/docker-run-action@v3
-        with:
-          image: fedora:latest
-          options: -v ${{ github.workspace }}:/workspace
-          env: |
-            COPR_SECRET: ${{ secrets.COPR_SECRET }}
-          run: |
-            dnf install -y copr-cli
-            mkdir -p ~/.config
-            echo "$COPR_SECRET" > ~/.config/copr
-            chmod 600 ~/.config/copr
-            
-            SRPM_FILE=$(ls /workspace/SRPMS/*.src.rpm | head -n 1)
-            
+        env:
+          COPR_SECRET: ${{ secrets.COPR_SECRET }}
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -e COPR_SECRET fedora:latest bash -c "
+            dnf install -y copr-cli && \
+            mkdir -p ~/.config && \
+            echo \"\$COPR_SECRET\" > ~/.config/copr && \
+            chmod 600 ~/.config/copr && \
+            SRPM_FILE=\$(ls /workspace/srpms/*.src.rpm | head -n 1) && \
             copr-cli build --nowait \
               --chroot fedora-44-x86_64 \
               --chroot fedora-44-aarch64 \
               --chroot fedora-rawhide-x86_64 \
               --chroot fedora-rawhide-aarch64 \
-              universish/saber..notes "$SRPM_FILE"
+              universish/Tauon..MusicBox \"\$SRPM_FILE\"
+          "
 
       - name: Spec Değişikliğini ve Git Etiketini Kaydet
         run: |
@@ -136,17 +132,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Spec'i tekrar güncelle (checkout ile sıfırlandığı için)
           sed -i -E "s/^(Version:[[:space:]]*).*/\1${VERSION}/" specs/Tauon.spec
           sed -i -E "s/^(Release:[[:space:]]*).*/\1${RELEASE}%{?dist}/" specs/Tauon.spec
           
           git add specs/Tauon.spec
           git diff --staged --quiet || git commit -m "chore(release): build v${VERSION}-${RELEASE}"
           
-          # EKLENEN KISIM: Uzak depodaki yeni commitleri (ikon dosyaları vb.) çek
           git pull --rebase origin main
-          
           git push origin main
           git tag -f "v${VERSION}"
           git push origin "refs/tags/v${VERSION}" --force
-          
+    
