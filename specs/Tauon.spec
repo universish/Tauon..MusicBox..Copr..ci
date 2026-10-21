@@ -92,6 +92,10 @@ fi
 # Portable binary; derleme adımı gerekmez.
 
 %install
+# 512x512 hicolor dizinine ve genel pixmaps dizinine kopyalama
+install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/tauon.png
+install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/pixmaps/tauon.png
+
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/opt/tauon
 mkdir -p %{buildroot}%{_bindir}
@@ -214,7 +218,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko
 %{_bindir}/tauonmb
 %{_datadir}/applications/%{name}.desktop
 %{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
-%{_datadir}/icons/hicolor/*/*/*
+%{_datadir}/icons/hicolor/512x512/apps/tauon.png
+%{_datadir}/pixmaps/tauon.png
 
 %changelog
 * Tue Oct 06 2026 Saffet Yavuz : universish <universish@tutamail.com> - %{version}-%{release}
