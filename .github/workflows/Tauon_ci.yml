@@ -108,21 +108,28 @@ jobs:
 
       - name: Copr CLI Kurulumu ve SRPM Gönderimi
         env:
-          COPR_SECRET: ${{ secrets.COPR_SECRET }}
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+          COPR_URL: ${{ secrets.COPR_URL }}
         run: |
-          docker run --rm -v ${{ github.workspace }}:/workspace -e COPR_SECRET fedora:latest bash -c "
-            dnf install -y copr-cli && \
-            mkdir -p ~/.config && \
-            echo \"\$COPR_SECRET\" > ~/.config/copr && \
-            chmod 600 ~/.config/copr && \
-            SRPM_FILE=\$(ls /workspace/srpms/*.src.rpm | head -n 1) && \
-            copr-cli build --nowait \
-              --chroot fedora-44-x86_64 \
-              --chroot fedora-44-aarch64 \
-              --chroot fedora-rawhide-x86_64 \
-              --chroot fedora-rawhide-aarch64 \
-              universish/Tauon..MusicBox \"\$SRPM_FILE\"
-          "
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -e COPR_LOGIN -e COPR_USERNAME -e COPR_TOKEN -e COPR_URL \
+            fedora:latest bash -c '
+              dnf install -y copr-cli && \
+              mkdir -p ~/.config && \
+              printf "[copr-cli]\nlogin = %s\nusername = %s\ntoken = %s\ncopr_url = %s\n" \
+                "$COPR_LOGIN" "$COPR_USERNAME" "$COPR_TOKEN" "$COPR_URL" > ~/.config/copr && \
+              chmod 600 ~/.config/copr && \
+              SRPM_FILE=$(ls /workspace/srpms/*.src.rpm | head -n 1) && \
+              copr-cli build --nowait \
+                --chroot fedora-44-x86_64 \
+                --chroot fedora-44-aarch64 \
+                --chroot fedora-rawhide-x86_64 \
+                --chroot fedora-rawhide-aarch64 \
+                universish/Tauon..MusicBox "$SRPM_FILE"
+            '
 
       - name: Spec Değişikliğini ve Git Etiketini Kaydet
         run: |
