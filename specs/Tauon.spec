@@ -92,34 +92,34 @@ fi
 # Portable binary; derleme adımı gerekmez.
 
 %install
-# 512x512 hicolor dizinine ve genel pixmaps dizinine kopyalama
-install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/tauon.png
-install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/pixmaps/tauon.png
-
+# 1. Her zaman ilk olarak hedef dizin temizlenir
 rm -rf %{buildroot}
+
+# 2. Gerekli sistem dizinleri oluşturulur
 mkdir -p %{buildroot}/opt/tauon
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_datadir}/applications
 mkdir -p %{buildroot}%{_datadir}/metainfo
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+mkdir -p %{buildroot}%{_datadir}/icons/hicolor/512x512/apps
+mkdir -p %{buildroot}%{_datadir}/pixmaps
 
-# Dosyaları /opt/tauon altına yerleştir
+# 3. Dosyaları /opt/tauon altına yerleştir
 cp -a ./* %{buildroot}/opt/tauon/
 
-# 1. Taşınabilir mod dosyasını sil (Veriler ~/.local/share/TauonMusicBox altına yazılsın)
+# 4. Temizlik ve Fedora yerel kütüphane bağlantıları
+# Taşınabilir mod dosyasını sil (Veriler ~/.local/share/TauonMusicBox altına yazılsın)
 rm -f %{buildroot}/opt/tauon/portable %{buildroot}/opt/tauon/_internal/portable
 
-# 2. Uyumsuz gömülü PipeWire kütüphanesini sil (Fedora'nın yerelini kullansın)
+# Uyumsuz gömülü PipeWire kütüphanesini sil (Fedora'nın yerelini kullansın)
 rm -f %{buildroot}/opt/tauon/_internal/libpipewire*
 
-# 3. OpenSSL Sürüm Çakışması Düzeltmesi (ffmpeg subprocess çökmesini engeller)
+# OpenSSL Sürüm Çakışması Düzeltmesi (ffmpeg subprocess çökmesini engeller)
 rm -f %{buildroot}/opt/tauon/_internal/libssl.so*
 rm -f %{buildroot}/opt/tauon/_internal/libcrypto.so*
 ln -sf %{_libdir}/libssl.so.3 %{buildroot}/opt/tauon/_internal/libssl.so.3
 ln -sf %{_libdir}/libcrypto.so.3 %{buildroot}/opt/tauon/_internal/libcrypto.so.3
 
-# 4. Gömülü SDL3 ikilisini silip sisteminkine bağla
+# Gömülü SDL3 ikilisini silip sisteminkine bağla
 rm -f %{buildroot}/opt/tauon/libSDL3.so.0
 ln -sf %{_libdir}/libSDL3.so.0 %{buildroot}/opt/tauon/libSDL3.so.0
 
@@ -128,7 +128,7 @@ if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
     chmod +x "%{buildroot}/opt/tauon/Tauon Music Box"
 fi
 
-# /usr/bin/tauon başlatıcı betiği
+# 5. /usr/bin/tauon başlatıcı betiği
 cat << 'EOF' > %{buildroot}%{_bindir}/tauon
 #!/bin/sh
 PRELOAD_LIBS=""
@@ -156,8 +156,8 @@ chmod 755 %{buildroot}%{_bindir}/tauon
 # Geriye dönük uyumluluk için tauonmb sembolik bağı
 ln -sf tauon %{buildroot}%{_bindir}/tauonmb
 
-# Masaüstü kısayolu (StartupWMClass=tauonmb)
-cat << 'EOF' > %{buildroot}%{_datadir}/applications/%{name}.desktop
+# 6. Masaüstü kısayolu (StartupWMClass=tauonmb)
+cat << 'EOF' > %{buildroot}%{_datadir}/applications/tauon.desktop
 [Desktop Entry]
 Name=Tauon Music Box
 GenericName=Music Player
@@ -172,40 +172,15 @@ Categories=AudioVideo;Audio;Player;
 MimeType=audio/flac;audio/mp3;audio/ogg;audio/wav;audio/x-matroska;audio/m4a;audio/aac;audio/opus;
 EOF
 
-# Metainfo kurulumu
+# 7. Metainfo kurulumu
 install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml
 
-# Simgeleri hicolor dizinlerine yerleştir
-find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
-find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
+# 8. İkon Kurulumu
+# Ürettiğimiz orijinal 512x512 ikonu hicolor ve pixmaps dizinlerine yerleştiriyoruz
+install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/tauon.png
+install -Dm644 assets/tauon-icon.png %{buildroot}%{_datadir}/pixmaps/tauon.png
 
-# 3 Katmanlı SVG ikonu ImageMagick ile birleştirip PNG olarak kaydet
-if [ -f "assets/tau.icon/Assets/01-vinyl-base.svg" ]; then
-    mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
-    convert -background none -density 300 \
-        "assets/tau.icon/Assets/01-vinyl-base.svg" \
-        "assets/tau.icon/Assets/02-colour-arcs.svg" \
-        "assets/tau.icon/Assets/03-centre-label.svg" \
-        -layers flatten -resize 256x256 \
-        "%{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png" || true
-fi
-
-if [ ! -f "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg" ] && [ ! -f "%{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png" ]; then
-    cat << 'EOF' > %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <defs>
-    <linearGradient id="tauonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4a90e2"/>
-      <stop offset="100%" stop-color="#8e44ad"/>
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="28" fill="url(#tauonGrad)"/>
-  <circle cx="64" cy="64" r="38" fill="none" stroke="#ffffff" stroke-width="8"/>
-  <polygon points="56,46 56,82 82,64" fill="#ffffff"/>
-</svg>
-EOF
-fi
-
+# Boş kalan ikon alt dizinlerini temizle
 find %{buildroot}%{_datadir}/icons/hicolor -type d -empty -delete 2>/dev/null || true
 
 %check
