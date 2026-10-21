@@ -135,6 +135,11 @@ jobs:
           
           git add specs/Tauon.spec
           git diff --staged --quiet || git commit -m "chore(release): build v${VERSION}-${RELEASE}"
+          
+          # EKLENEN KISIM: Uzak depodaki yeni commitleri (ikon dosyaları vb.) çek
+          git pull --rebase origin main
+          
           git push origin main
           git tag -f "v${VERSION}"
           git push origin "refs/tags/v${VERSION}" --force
+          
