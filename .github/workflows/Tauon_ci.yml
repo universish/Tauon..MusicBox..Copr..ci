@@ -2,7 +2,8 @@ name: Tauon Copr CI
 
 on:
   schedule:
-    - cron: '0 3 * * *' # Her gün 03:00 UTC'de yeni sürüm kontrolü
+    # Brisbane, Avustralya (UTC+10) saatine göre 12:00 (Öğle) ve 18:00 (İş Çıkışı)
+    - cron: '0 2,8 * * *'
   workflow_dispatch:
   push:
     paths:
@@ -15,96 +16,94 @@ permissions:
   contents: write
 
 jobs:
-  check-and-build:
+  # 1. AŞAMA: Güncelleme Kontrolü
+  check_update:
     runs-on: ubuntu-latest
+    outputs:
+      build_needed: ${{ steps.check.outputs.build_needed }}
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+      latest_tag: ${{ steps.check.outputs.latest_tag }}
     steps:
-      - name: Depoyu Klonla
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Upstream Sürümünü ve Release Numarasını Hesapla
-        id: check_release
+      - name: Upstream Sürümünü ve Copr Durumunu Kontrol Et
+        id: check
         run: |
-          # 1. Upstream GitHub'dan en güncel sürüm etiketini al
           LATEST_TAG=$(curl -sL "https://api.github.com/repos/Taiko2k/Tauon/releases/latest" | jq -r '.tag_name')
-          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-            echo "Upstream sürüm etiketi alınamadı."
-            exit 1
-          fi
-
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then exit 1; fi
+          
           VERSION="${LATEST_TAG#v}"
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          # 2. Copr API'den universish/Tauon..MusicBox deposundaki bu sürüm için en yüksek release'i bul
           COPR_API="https://copr.fedorainfracloud.org/api_3/package?ownername=universish&projectname=Tauon..MusicBox&packagename=tauon&with_all_builds=true"
           LATEST_REL=$(curl -sL "$COPR_API" | jq -r --arg ver "$VERSION" '
             [.builds[]? | select(.version | startswith($ver)) | .version | split("-")[1] | split(".")[0] | tonumber] | max // 0
           ' 2>/dev/null || echo "0")
 
-          # 3. Aynı sürümse bir artır (12.1.0-27 -> 28), yeni sürümse 1 yap (12.2.0 -> 1)
           NEW_RELEASE=$((LATEST_REL + 1))
           echo "release=$NEW_RELEASE" >> $GITHUB_OUTPUT
 
-          # 4. Derleme gerekli mi?
-          # Eğer push veya workflow_dispatch ile tetiklendiyse her zaman derle.
-          # Cron zamanlayıcıdaysa sadece yeni upstream sürüm geldiyse (LATEST_REL == 0 ise) derle.
           if [ "${{ github.event_name }}" = "schedule" ] && [ "$LATEST_REL" -gt 0 ]; then
             echo "build_needed=false" >> $GITHUB_OUTPUT
-            echo "Upstream sürümünde değişiklik yok ($VERSION zaten Copr üzerinde mevcut)."
           else
             echo "build_needed=true" >> $GITHUB_OUTPUT
-            echo "Derleme başlatılıyor: Sürüm $VERSION, Release $NEW_RELEASE"
           fi
 
-      - name: Kaynakları İndir ve Hazırla
-        if: steps.check_release.outputs.build_needed == 'true'
+  # 2. AŞAMA: İndirme ve SRPM Paketleme (Yalnızca yeni sürüm varsa çalışır)
+  build_package:
+    needs: check_update
+    if: needs.check_update.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Kaynakları İndir ve Spec Dosyasını Hazırla
         run: |
-          TAG="${{ steps.check_release.outputs.latest_tag }}"
-          VERSION="${{ steps.check_release.outputs.version }}"
-          RELEASE="${{ steps.check_release.outputs.release }}"
+          TAG="${{ needs.check_update.outputs.latest_tag }}"
+          VERSION="${{ needs.check_update.outputs.version }}"
+          RELEASE="${{ needs.check_update.outputs.release }}"
 
           mkdir -p rpmbuild/SOURCES
-          mkdir -p rpmbuild/SRPMS
+          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux.7z" -o rpmbuild/SOURCES/TauonMusicBox-linux.7z
+          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux-arm64.7z" -o rpmbuild/SOURCES/TauonMusicBox-linux-arm64.7z
 
-          echo "x86_64 arşivi indiriliyor..."
-          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux.7z" \
-            -o rpmbuild/SOURCES/TauonMusicBox-linux.7z
-
-          echo "arm64 arşivi indiriliyor..."
-          curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux-arm64.7z" \
-            -o rpmbuild/SOURCES/TauonMusicBox-linux-arm64.7z
-
-          # Ek kaynakları (desktop ve metainfo) kopyala
-          if [ -d sources ] && [ "$(ls -A sources)" ]; then
-            cp sources/* rpmbuild/SOURCES/
-          fi
-
-          # Spec dosyasındaki Version ve Release alanlarını dinamik olarak güncelle
+          if [ -d sources ] && [ "$(ls -A sources)" ]; then cp sources/* rpmbuild/SOURCES/; fi
           sed -i -E "s/^(Version:[[:space:]]*).*/\1${VERSION}/" specs/Tauon.spec
           sed -i -E "s/^(Release:[[:space:]]*).*/\1${RELEASE}%{?dist}/" specs/Tauon.spec
 
       - name: Fedora Docker ile SRPM Üret
-        if: steps.check_release.outputs.build_needed == 'true'
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            fedora:latest bash -c "
-              dnf install -y rpmdevtools rpm-build
-              rpmbuild -bs \
-                --define '_topdir /workspace/rpmbuild' \
-                --define '_sourcedir /workspace/rpmbuild/SOURCES' \
-                specs/Tauon.spec
-            "
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace fedora:latest bash -c "
+            dnf install -y rpmdevtools rpm-build && \
+            rpmbuild -bs --define '_topdir /workspace/rpmbuild' --define '_sourcedir /workspace/rpmbuild/SOURCES' specs/Tauon.spec
+          "
+
+      - name: Üretilen SRPM Dosyasını Artifact Olarak Kaydet
+        uses: actions/upload-artifact@v4
+        with:
+          name: srpm-package
+          path: rpmbuild/SRPMS/*.src.rpm
+
+  # 3. AŞAMA: Copr'a Gönderim ve Git Güncellemesi
+  publish_copr:
+    needs: [check_update, build_package]
+    if: needs.check_update.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: SRPM Dosyasını İndir
+        uses: actions/download-artifact@v4
+        with:
+          name: srpm-package
+          path: srpms/
 
       - name: Copr CLI Kurulumu ve SRPM Gönderimi
-        if: steps.check_release.outputs.build_needed == 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y python3-pip
           pip install --break-system-packages copr-cli 2>/dev/null || pip install copr-cli
-
           mkdir -p ~/.config
           cat <<EOF > ~/.config/copr
           [copr-cli]
@@ -113,24 +112,23 @@ jobs:
           token = ${{ secrets.COPR_TOKEN }}
           username = ${{ secrets.COPR_USERNAME }}
           EOF
-
-          SRPM_PATH=$(ls rpmbuild/SRPMS/*.src.rpm)
-          echo "Yüklenen SRPM: $SRPM_PATH"
+          SRPM_PATH=$(ls srpms/*.src.rpm)
           copr-cli build --nowait "universish/Tauon..MusicBox" "$SRPM_PATH"
 
       - name: Spec Değişikliğini ve Git Etiketini Kaydet
-        if: steps.check_release.outputs.build_needed == 'true'
         run: |
-          VERSION="${{ steps.check_release.outputs.version }}"
-          RELEASE="${{ steps.check_release.outputs.release }}"
-
+          VERSION="${{ needs.check_update.outputs.version }}"
+          RELEASE="${{ needs.check_update.outputs.release }}"
+          
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
+          
+          # Spec'i tekrar güncelle (checkout ile sıfırlandığı için)
+          sed -i -E "s/^(Version:[[:space:]]*).*/\1${VERSION}/" specs/Tauon.spec
+          sed -i -E "s/^(Release:[[:space:]]*).*/\1${RELEASE}%{?dist}/" specs/Tauon.spec
+          
           git add specs/Tauon.spec
           git diff --staged --quiet || git commit -m "chore(release): build v${VERSION}-${RELEASE}"
           git push origin main
-
-          # Sürüm etiketini güncelle
           git tag -f "v${VERSION}"
           git push origin "refs/tags/v${VERSION}" --force
