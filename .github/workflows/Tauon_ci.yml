@@ -107,19 +107,26 @@ jobs:
           path: srpms/
 
       - name: Copr CLI Kurulumu ve SRPM Gönderimi
-        run: |
-          sudo apt-get update && sudo apt-get install -y python3-pip
-          pip install --break-system-packages copr-cli 2>/dev/null || pip install copr-cli
-          mkdir -p ~/.config
-          cat <<EOF > ~/.config/copr
-          [copr-cli]
-          copr_url = https://copr.fedorainfracloud.org
-          login = ${{ secrets.COPR_LOGIN }}
-          token = ${{ secrets.COPR_TOKEN }}
-          username = ${{ secrets.COPR_USERNAME }}
-          EOF
-          SRPM_PATH=$(ls srpms/*.src.rpm)
-          copr-cli build --nowait "universish/Tauon..MusicBox" "$SRPM_PATH"
+        uses: addnab/docker-run-action@v3
+        with:
+          image: fedora:latest
+          options: -v ${{ github.workspace }}:/workspace
+          env: |
+            COPR_SECRET: ${{ secrets.COPR_SECRET }}
+          run: |
+            dnf install -y copr-cli
+            mkdir -p ~/.config
+            echo "$COPR_SECRET" > ~/.config/copr
+            chmod 600 ~/.config/copr
+            
+            SRPM_FILE=$(ls /workspace/SRPMS/*.src.rpm | head -n 1)
+            
+            copr-cli build --nowait \
+              --chroot fedora-44-x86_64 \
+              --chroot fedora-44-aarch64 \
+              --chroot fedora-rawhide-x86_64 \
+              --chroot fedora-rawhide-aarch64 \
+              universish/saber..notes "$SRPM_FILE"
 
       - name: Spec Değişikliğini ve Git Etiketini Kaydet
         run: |
