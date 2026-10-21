@@ -70,9 +70,15 @@ jobs:
           curl -sL "https://github.com/Taiko2k/Tauon/releases/download/${TAG}/TauonMusicBox-linux-arm64.7z" -o rpmbuild/SOURCES/TauonMusicBox-linux-arm64.7z
 
           if [ -d sources ] && [ "$(ls -A sources)" ]; then cp sources/* rpmbuild/SOURCES/; fi
+          
+          # EKLENEN KISIM: assets dizinini sıkıştırıp build ortamına (SOURCES) aktar
+          if [ -d assets ]; then
+            tar -czf rpmbuild/SOURCES/assets.tar.gz assets/
+          fi
+          
           sed -i -E "s/^(Version:[[:space:]]*).*/\1${VERSION}/" specs/Tauon.spec
           sed -i -E "s/^(Release:[[:space:]]*).*/\1${RELEASE}%{?dist}/" specs/Tauon.spec
-
+          
       - name: Fedora Docker ile SRPM Üret
         run: |
           docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace fedora:latest bash -c "
