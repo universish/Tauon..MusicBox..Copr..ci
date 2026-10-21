@@ -30,12 +30,15 @@ URL:            https://github.com/Taiko2k/Tauon
 Source0:        TauonMusicBox-linux.7z
 Source1:        TauonMusicBox-linux-arm64.7z
 Source2:        com.Taiko2k.Tauon.metainfo.xml
+Source3:        assets.tar.gz
 
 ExclusiveArch:  x86_64 aarch64
 
 BuildRequires:  7zip
 BuildRequires:  desktop-file-utils
 BuildRequires:  libappstream-glib
+BuildRequires:  ImageMagick
+BuildRequires:  librsvg2-tools
 
 # Grafik, akış kod çözücü ve ses bağımlılıkları
 Requires:       SDL3
@@ -73,6 +76,9 @@ tracker audio support, Jellyfin/Plex streaming, and inline visualization tools.
 %ifarch aarch64
 7z x -snld %{SOURCE1} || :
 %endif
+
+# Assets arşivini çıkart
+tar -xzf %{SOURCE3} || :
 
 # Arşiv içeriği tek klasöre açıldıysa kök dizine taşı
 if [ $(ls -1A | wc -l) -eq 1 ] && [ -d * ]; then
@@ -168,6 +174,17 @@ install -Dm 644 %{SOURCE2} %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.me
 # Simgeleri hicolor dizinlerine yerleştir
 find %{buildroot}/opt/tauon -iname "*tauon*.svg" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg \; 2>/dev/null || true
 find %{buildroot}/opt/tauon -iname "*tauon*.png" -exec cp -f {} %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png \; 2>/dev/null || true
+
+# 3 Katmanlı SVG ikonu ImageMagick ile birleştirip PNG olarak kaydet
+if [ -f "assets/tau.icon/Assets/01-vinyl-base.svg" ]; then
+    mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+    convert -background none -density 300 \
+        "assets/tau.icon/Assets/01-vinyl-base.svg" \
+        "assets/tau.icon/Assets/02-colour-arcs.svg" \
+        "assets/tau.icon/Assets/03-centre-label.svg" \
+        -layers flatten -resize 256x256 \
+        "%{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png" || true
+fi
 
 if [ ! -f "%{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg" ] && [ ! -f "%{buildroot}%{_datadir}/icons/hicolor/256x256/apps/tauon.png" ]; then
     cat << 'EOF' > %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/tauon.svg
