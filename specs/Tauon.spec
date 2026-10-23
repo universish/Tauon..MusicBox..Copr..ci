@@ -129,6 +129,7 @@ if [ -f "%{buildroot}/opt/tauon/Tauon Music Box" ]; then
 fi
 
 # 5. /usr/bin/tauon başlatıcı betiği
+# /usr/bin/tauon başlatıcı betiği
 cat << 'EOF' > %{buildroot}%{_bindir}/tauon
 #!/bin/sh
 PRELOAD_LIBS=""
@@ -149,8 +150,12 @@ fi
 export SDL_VIDEO_DRIVER="wayland,x11"
 export SDL_VIDEODRIVER="wayland,x11"
 
+# Radyo yayınlarındaki SSL/TLS EOF hatalarını aşmak için OpenSSL güvenlik politikalarını esnet
+export OPENSSL_CONF=""
+
 exec "/opt/tauon/Tauon Music Box" "$@"
 EOF
+
 chmod 755 %{buildroot}%{_bindir}/tauon
 
 # Geriye dönük uyumluluk için tauonmb sembolik bağı
