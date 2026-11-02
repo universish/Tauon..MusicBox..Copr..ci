@@ -192,6 +192,19 @@ find %{buildroot}%{_datadir}/icons/hicolor -type d -empty -delete 2>/dev/null ||
 desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/com.Taiko2k.Tauon.metainfo.xml || true
 
+%post
+# Copr repo dosyasında metadata yenileme süresini bir saat olarak ayarla.
+# Dosya yoksa, tauon Copr dışından elle kurulmuşsa hiçbir değişiklik yapma.
+REPO_FILE="/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:universish:Tauon..MusicBox.repo"
+
+if [ -f "$REPO_FILE" ]; then
+    if grep -q '^metadata_expire[[:space:]]*=' "$REPO_FILE"; then
+        sed -i 's/^metadata_expire[[:space:]]*=.*/metadata_expire=1h/' "$REPO_FILE"
+    else
+        printf '\nmetadata_expire=1h\n' >> "$REPO_FILE"
+    fi
+fi
+
 %files
 /opt/tauon
 %{_bindir}/tauon
