@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   # 1. AŞAMA: Güncelleme Kontrolü
+    # 1. AŞAMA: Güncelleme Kontrolü
   check_update:
     runs-on: ubuntu-latest
     outputs:
@@ -24,29 +25,129 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       release: ${{ steps.check.outputs.release }}
       latest_tag: ${{ steps.check.outputs.latest_tag }}
+    env:
+      COPR_API: https://copr.fedorainfracloud.org/api_3/build/list
+      COPR_OWNER: universish
+      COPR_PROJECT: Tauon..MusicBox
+      COPR_PACKAGE: tauon
+      TARGET_CHROOTS: fedora-44-x86_64 fedora-44-aarch64 fedora-rawhide-x86_64 fedora-rawhide-aarch64
     steps:
       - name: Upstream Sürümünü ve Copr Durumunu Kontrol Et
         id: check
         run: |
-          LATEST_TAG=$(curl -sL "https://api.github.com/repos/Taiko2k/Tauon/releases/latest" | jq -r '.tag_name')
-          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then exit 1; fi
-          
+          set -euo pipefail
+
+          LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/Taiko2k/Tauon/releases/latest" | jq -er '.tag_name')
           VERSION="${LATEST_TAG#v}"
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          COPR_API="https://copr.fedorainfracloud.org/api_3/package?ownername=universish&projectname=Tauon..MusicBox&packagename=tauon&with_all_builds=true"
-          LATEST_REL=$(curl -sL "$COPR_API" | jq -r --arg ver "$VERSION" '
-            [.builds[]? | select(.version | startswith($ver)) | .version | split("-")[1] | split(".")[0] | tonumber] | max // 0
-          ' 2>/dev/null || echo "0")
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          NEW_RELEASE=$((LATEST_REL + 1))
-          echo "release=$NEW_RELEASE" >> $GITHUB_OUTPUT
+          # Copr, build/list API'sinde sayfalama kullanılmasını önerir.
+          # Bu döngü tüm erişilebilir derleme geçmişini tek bir JSON belgesinde toplar.
+          BUILDS_FILE=$(mktemp)
+          trap 'rm -f "$BUILDS_FILE"' EXIT
+          echo '{"items":[]}' > "$BUILDS_FILE"
 
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$LATEST_REL" -gt 0 ]; then
-            echo "build_needed=false" >> $GITHUB_OUTPUT
+          OFFSET=0
+          LIMIT=100
+
+          while true; do
+            PAGE=$(curl -fsSL -G "$COPR_API" \
+              --data-urlencode "ownername=$COPR_OWNER" \
+              --data-urlencode "projectname=$COPR_PROJECT" \
+              --data-urlencode "packagename=$COPR_PACKAGE" \
+              --data-urlencode "limit=$LIMIT" \
+              --data-urlencode "offset=$OFFSET")
+
+            PAGE_COUNT=$(jq '.items | length' <<< "$PAGE")
+            if [ "$PAGE_COUNT" -eq 0 ]; then
+              break
+            fi
+
+            jq -s '.[0].items + .[1].items | {items: .}' \
+              "$BUILDS_FILE" "$PAGE" > "${BUILDS_FILE}.new"
+            mv "${BUILDS_FILE}.new" "$BUILDS_FILE"
+
+            if [ "$PAGE_COUNT" -lt "$LIMIT" ]; then
+              break
+            fi
+
+            OFFSET=$((OFFSET + PAGE_COUNT))
+          done
+
+          CHROOTS_JSON=$(jq -n '$ENV.TARGET_CHROOTS | split(" ")')
+
+          # Sadece tam olarak aynı upstream sürümü değerlendirilir.
+          # Örneğin 13.1.1 için 13.1.10-1 yanlışlıkla eşleşmez.
+          #
+          # Burada yalnızca başarılı derlemeler değil, gönderilmiş tüm derlemeler
+          # sayılır. Böylece başarısız veya iptal edilmiş bir X-1 derlemesinden
+          # sonra yapılan yeniden deneme X-2 olur ve NVR çakışması oluşmaz.
+          MAX_RELEASE=$(jq -r --arg ver "$VERSION" '
+            [
+              .items[]?
+              | (.source_package.version // "") as $nvr
+              | select($nvr | startswith($ver + "-"))
+              | ($nvr | split("-") | .[-1] | split(".") | .[0])
+              | select(test("^[0-9]+$"))
+              | tonumber
+            ] | max // 0
+          ' "$BUILDS_FILE")
+
+          # Aynı upstream sürümünün dört hedef chroot'unun tamamında en az birer
+          # başarılı Copr derlemesi varsa sürüm tam olarak yayınlanmış demektir.
+          PUBLISHED=$(jq -r --arg ver "$VERSION" --argjson chroots "$CHROOTS_JSON" '
+            [
+              $chroots[] as $c
+              | any(
+                  .items[]?;
+                  .state == "succeeded"
+                  and ((.source_package.version // "") | startswith($ver + "-"))
+                  and ((.chroots // []) | index($c) != null)
+                )
+            ] | all
+          ' "$BUILDS_FILE")
+
+          # Bir önceki iş akışından kalan bekleyen veya çalışan derleme varsa
+          # ikinci zamanlanmış tetikleme aynı paket için yeni bir derleme kuyruğa eklemez.
+          ACTIVE=$(jq -r --arg ver "$VERSION" --argjson chroots "$CHROOTS_JSON" '
+            [
+              $chroots[] as $c
+              | any(
+                  .items[]?;
+                  (.state as $s
+                    | ["waiting", "pending", "importing", "starting", "running"]
+                    | index($s) != null)
+                  and ((.source_package.version // "") | startswith($ver + "-"))
+                  and ((.chroots // []) | index($c) != null)
+                )
+            ] | any
+          ' "$BUILDS_FILE")
+
+          RELEASE=$((MAX_RELEASE + 1))
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+
+          # Manuel çalıştırma ve spec/sources değişikliğiyle gelen push bilinçli
+          # yeniden paketleme sayılır; Release bir artırılarak devam eder.
+          # Yalnızca zamanlanmış çalıştırmada yayınlanmış veya hâlâ işlenen sürüm
+          # paketleme adımlarına geçilmesini engeller.
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            BUILD_NEEDED=true
+          elif [ "$PUBLISHED" = "true" ] || [ "$ACTIVE" = "true" ]; then
+            BUILD_NEEDED=false
           else
-            echo "build_needed=true" >> $GITHUB_OUTPUT
+            BUILD_NEEDED=true
+          fi
+
+          echo "build_needed=$BUILD_NEEDED" >> "$GITHUB_OUTPUT"
+
+          if [ "$BUILD_NEEDED" = "true" ]; then
+            echo "::notice::Copr derlemesi gerekiyor: $VERSION-$RELEASE"
+          elif [ "$PUBLISHED" = "true" ]; then
+            echo "::notice::$VERSION sürümü Copr'da zaten yayınlanmış; paketleme atlanıyor."
+          else
+            echo "::notice::$VERSION sürümü için Copr'da etkin bir derleme bulundu; yeni derleme kuyruğa eklenmiyor."
           fi
 
   # 2. AŞAMA: İndirme ve SRPM Paketleme (Yalnızca yeni sürüm varsa çalışır)
