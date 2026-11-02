@@ -248,6 +248,8 @@ jobs:
           
           git pull --rebase origin main
           git push origin main
-          git tag -f "v${VERSION}"
-          git push origin "refs/tags/v${VERSION}" --force
+
+          TAG="v${VERSION}-${RELEASE}"
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
     
